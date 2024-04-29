@@ -1,20 +1,102 @@
 #!/usr/bin/env bash
+: '
+Logging module for bash.
 
-# Configurables
+The module provides a both plaintext logging and JSON logging. Configuration
+can be provided in two ways:
 
-_TZ="${LOGGING_TZ:-UTC}" # tz format, usually continent/city
-_LOG_LEVEL="${LOGGING_LEVEL:-D}"
-_LOG_STDOUT="${LOGGING_STDOUT:-true}"
-_LOG_CALL_STACK="${LOGGING_CALL_STACK:-true}"
-_TIME_FMT="${LOGGING_TIME_FMT:-%Y-%m-%dT%H:%M:%S.%3N%:z}"
-_JSON="${LOGGING_JSON:-true}"
+- JSON Configuration File
+- Environment Variables
 
-if [[ -v LOGGING_FILES ]]; then
-    _LOG_FILES=("${LOGGING_FILES[@]}")
-else
-    _LOG_FILES=()
+
+*/* JSON Configuration file */*
+
+Before sourcing the module set the LOGGING_CONFIG_FILE to point
+to a JSON configuration file (LOGGING_CONFIG_FILE=config.json).
+The file needs to have the following structure (default values are shown):
+
+{
+    "logging": {
+        "timezone": "UTC",
+        "level": "DEBUG",
+        "stdout_enabled": true,
+        "include_call_stack": true,
+        "timestamp_fmt": "-%Y-%m-%dT%H:%M:%S.%3N%:z",
+        "json": true,
+        "logfiles": [
+            "logging.log"
+        ]
+    }
+}
+
+
+*/* Environment Variables */*
+
+Environment variables take precedence over settings defined via the
+JSON cofig. The following environment variables can be set before sourcing
+the module (default values are shown):
+
+- LOGGING_TZ                    string          UTC
+- LOGGING_LEVEL                 string          DEBUG
+- LOGGING_STDOUT                bool            true
+- LOGGING_INCLUDE_CALL_STACK    bool            true
+- LOGGING_TIMESTAMP_FMT         string          -%Y-%m-%dT%H:%M:%S.%3N%:z
+- LOGGING_JSON                  bool            true
+- LOGGING_FILES                 array(str)      ( "logging.log" )
+
+
+-- Usage --
+
+Log a message:
+
+logging::log 'I' "This is a log message"
+
+'
+
+# shellcheck disable=SC2046
+if [[ -f "${LOGGING_CONFIG_FILE}" ]]; then
+
+    if ! jq . "${LOGGING_CONFIG_FILE}" > /dev/null 2>&1; then
+        echo "[WARNING] [logging.sh] The file provided is not valid JSON"
+    fi
+
+    IFS=, read -r \
+        FILE_TZ \
+        FILE_LEVEL \
+        FILE_STDOUT \
+        FILE_INCLUDE_CALL_STACK \
+        FILE_TIMESTAMP_FMT \
+        FILE_JSON <<< $(jq -r '
+        .logging | [
+            .timezone,
+            .level,
+            .stdout_enabled,
+            .include_call_stack,
+            .timestamp_fmt,
+            .json
+        ] | join(",")' "${LOGGING_CONFIG_FILE}" 2> /dev/null
+        )
+
+    IFS=, read -r -a FILE_FILES <<< $(
+        jq -r '.logging.logfiles // [] | join(",")' "${LOGGING_CONFIG_FILE}"
+        )
 fi
 
+_TZ="${LOGGING_TZ:-${FILE_TZ:-UTC}}"
+_LEVEL="${LOGGING_LEVEL:-${FILE_LEVEL:-D}}"
+_STDOUT="${LOGGING_STDOUT:-${FILE_STDOUT:-true}}"
+_INCLUDE_CALL_STACK="${LOGGING_INCLUDE_CALL_STACK:-${FILE_INCLUDE_CALL_STACK:-true}}"
+_TIMESTAMP_FMT="${LOGGING_TIMESTAMP_FMT:-${FILE_TIMESTAMP_FMT:-%Y-%m-%dT%H:%M:%S.%3N%:z}}"
+_JSON="${LOGGING_JSON:-${FILE_JSON:-true}}"
+
+
+if [[ -v "${LOGGING_FILES}" ]]; then
+    _LOG_FILES=("${LOGGING_FILES[@]}")
+elif [[ -n "${FILE_FILES[*]}" ]]; then
+    _LOG_FILES=("${FILE_FILES[@]}")
+else
+    _LOG_FILES=("logging.log")
+fi
 
 declare -A SEV_MSG
 
@@ -29,7 +111,7 @@ selectDateCmd () {
     if [[ "$(uname)" == 'Darwin' ]]; then
         if command -v gdate > /dev/null; then
             echo 'gdate'
-        elif ! printf "%f" "$(date +"${_TIME_FMT}")" > /dev/null 2>&1; then
+        elif ! printf "%f" "$(date +"${_TIMESTAMP_FMT}")" > /dev/null 2>&1; then
             msg="[ERROR] Either the date format is wrong or it's not compatible with BSD date. "
             msg+="Please install GNU date or change the format."
             echo "${msg}" >&2
@@ -137,11 +219,11 @@ logging::log () {
     severity="$(getSeverity "${1}")" || return 0
     message="${2}"
 
-    [[ "${severity}" -gt "$(getSeverity "${_LOG_LEVEL}")" ]] && return 0
+    [[ "${severity}" -gt "$(getSeverity "${_LEVEL}")" ]] && return 0
 
-    time_str="$(TZ="${_TZ}" "${_DATE_CMD}" +"${_TIME_FMT}")"
+    time_str="$(TZ="${_TZ}" "${_DATE_CMD}" +"${_TIMESTAMP_FMT}")"
 
-    [[ "${_LOG_CALL_STACK}" == true ]] && {
+    [[ "${_INCLUDE_CALL_STACK}" == true ]] && {
         call_stack=()
         for (( ind="${#FUNCNAME[@]}" - 2; ind >=1; ind-- )); do
             call_stack+=("${BASH_SOURCE["${ind}"]##*/}[${BASH_LINENO["${ind}"]}]>${FUNCNAME["${ind}"]}")
@@ -161,13 +243,13 @@ logging::log () {
             "${time_str}" \
             "${SEV_MSG["${severity}"]}" \
             "${message}" \
-            "${call_stack_str:-}" | tee -a "${_LOG_FILES[@]}" > ${_O_PIPE}
+            "${call_stack_str:-}" | tee -a "${_LOG_FILES[@]}" > "${_O_PIPE}"
     fi
 }
 
 
 main () {
-    if [[ "${_LOG_STDOUT,,}" == true ]]; then
+    if [[ "${_STDOUT,,}" == true ]]; then
         _O_PIPE='/dev/stdout'
     else
         _O_PIPE='/dev/null'
@@ -176,8 +258,8 @@ main () {
     _DATE_CMD=$(selectDateCmd)
 
     logging::log 'INFO' \
-        "Logger initialized. Timezone=${_TZ}, call stack=${_LOG_CALL_STACK}"
+        "Logging initialized: Timezone=${_TZ}, LogLevel=${_LEVEL} CallStack=${_INCLUDE_CALL_STACK}, JSON=${_JSON}"
 }
 
 
-main "$@"
+main
