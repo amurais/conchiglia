@@ -5,8 +5,36 @@ Logging module for bash.
 The module provides a both plaintext logging and JSON logging. Configuration
 can be provided in two ways:
 
-- JSON Configuration File
 - Environment Variables
+- JSON Configuration File
+
+
+*/* Environment Variables */*
+
+Environment variables take precedence over settings defined via the
+JSON cofig. The following environment variables can be set before sourcing
+the module (default values are shown):
+
+- LOGGING_TZ, type: string, default: UTC
+    Timezone. Use the format provided by tzselect (e.g.: America/New_York)
+
+- LOGGING_LEVEL, type: string, default: DEBUG
+    Log level. Must be one of DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+- LOGGING_STDOUT, type: bool, default: true
+    Whether to log to the standard output in addition to the lofiles configured
+
+- LOGGING_INCLUDE_CALL_STACK, type: bool, default: true
+    Whether to include the full call stack in the log records
+
+- LOGGING_TIMESTAMP_FMT, type: string, default: %Y-%m-%dT%H:%M:%S.%3N%:z
+    Format to use for the log timestamps
+
+- LOGGING_JSON, type: bool, default: true
+    Whether to log in JSON format rather than plaintext
+
+- LOGGING_FILES, type: array of strings, default: ("logging.log")
+    An array of logfiles to write the logs to
 
 
 */* JSON Configuration file */*
@@ -28,21 +56,6 @@ The file needs to have the following structure (default values are shown):
         ]
     }
 }
-
-
-*/* Environment Variables */*
-
-Environment variables take precedence over settings defined via the
-JSON cofig. The following environment variables can be set before sourcing
-the module (default values are shown):
-
-- LOGGING_TZ                    string          UTC
-- LOGGING_LEVEL                 string          DEBUG
-- LOGGING_STDOUT                bool            true
-- LOGGING_INCLUDE_CALL_STACK    bool            true
-- LOGGING_TIMESTAMP_FMT         string          -%Y-%m-%dT%H:%M:%S.%3N%:z
-- LOGGING_JSON                  bool            true
-- LOGGING_FILES                 array(str)      ( "logging.log" )
 
 
 -- Usage --
